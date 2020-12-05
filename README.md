@@ -4,4 +4,8 @@ This repository contains the description of a low-cost spectral scanner based on
 
 For a first test, see [this notebook](https://github.com/eulerlab/spectral-scanner/blob/main/notebooks/test_spectrometer.ipynb).
 
-More soon.
+Here is a labeled image of the board:
+
+[<img src="https://github.com/eulerlab/spectral-scanner/blob/main/pics/board_v1.png" alt="Drawing" width="720"/>](https://github.com/eulerlab/spectral-scanner/blob/main/pics/board_v1.png)
+
+
