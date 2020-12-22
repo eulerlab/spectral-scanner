@@ -185,11 +185,13 @@ class Scanner(object):
     return done
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-  def calcPath()
-
-        self._edgelen = 1
-        self._nPoints = 0
-        self._currXY = [0, 0]
+  def calcPath(self):
+    pass
+    """
+    self._edgelen = 1
+    self._nPoints = 0
+    self._currXY = [0, 0]
+    """
 
 
   def getNextPos(self, ipix):
@@ -201,12 +203,8 @@ class Scanner(object):
       if self._nPoints == 0:
         # Origin
         self._currXY = [0, 0]
-      else
-
-
-
-
-
+      else:
+        pass
       #self._edgelen += 1
 
       self._nPoints += 1

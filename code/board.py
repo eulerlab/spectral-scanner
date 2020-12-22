@@ -25,11 +25,11 @@ RX             = const(16)
 
 # Servos
 SERVO_PAN      = const(27)
-PAN_RANGE_US   = [800, 2200]
-PAN_RANGE_DEG  = [-60, 60]
+PAN_RANGE_US   = [1010, 1931]
+PAN_RANGE_DEG  = [-45, 45]
 SERVO_TLT      = const(33)
-TLT_RANGE_US   = [800, 2200]
-TLT_RANGE_DEG  = [-60, 60]
+TLT_RANGE_US   = [1033, 1916]
+TLT_RANGE_DEG  = [-45, 45]
 
 # NeoPixel
 NEOPIX         = const(32)

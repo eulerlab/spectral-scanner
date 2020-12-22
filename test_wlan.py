@@ -16,8 +16,14 @@ try:
   '''
 
   sc = Scanner()
-  sc.scan(fname, (3,3), (5,5), 0.001)
+  #sc.scan(fname, (3,3), (5,5), 0.001)
 
+  sc.moveTo(pos=[0,0])
+
+  sc.moveTo(pos=[-45,-45])
+  sc.moveTo(pos=[ 45, 45])
+
+  sc.moveTo(pos=[0,0])
 
 finally:
   '''
@@ -29,4 +35,4 @@ finally:
 f = open("temp.sim", "r")
 for i in range(10):
   print(f.readline()[:-2])
-"""  
+"""
