@@ -20,6 +20,9 @@ from driver.c12880ma import C12880MA
 __version__      = "0.1.0.0"
 __file_version__ = const(1)
 
+PATH_R_SPIRAL    = const(0)
+SERVO_MOVE_MS    = const(0)
+
 # ----------------------------------------------------------------------------
 class SpectImg(object):
   """Container class of a spectral image with all meta information
@@ -32,6 +35,7 @@ class SpectImg(object):
     """
     self.dXY = size_xy
     self.nPix = self.dXY[0] *self.dXY[1]
+    self.xyPath = np.zeros((self.nPix, 2))
     self.stepXY = step_xy
     self.nSpect = n_spect
     self.tInt_s = int_s
@@ -43,18 +47,20 @@ class SpectImg(object):
     self._rtc = RTC()
     self._toSerial = None
     self._nPixStored = 0
+    self._verbose = False
 
     # Check if file exists and recreate it, if needed
-    try:
-      os.stat(self._fname)
-      if not self._doOverwr:
-        print("ERROR: `{0}` already exists and `overwrite=False`")
-        return
-      os.remove(self._fname)
-    except OSError:
-      pass
-    print("Opening file `{0}`".format(self._fname))
-    self._file = open(self._fname, "w")
+    if len(self._fname) > 0:
+      try:
+        os.stat(self._fname)
+        if not self._doOverwr:
+          toLog("ERROR: `{0}` already exists and `overwrite=False`", True)
+          return
+        os.remove(self._fname)
+      except OSError:
+        pass
+      toLog("Opening file `{0}`".format(self._fname), True)
+      self._file = open(self._fname, "w")
 
     # Write header
     d = {"file_version": __file_version__}
@@ -62,9 +68,9 @@ class SpectImg(object):
     t = self._rtc.datetime()
     self._date = (t[0], t[1], t[2])
     self._time = (t[4], t[5], t[6])
-    d = {"date_yyyymmdd": self._date, "time_hhmmss": self._time}
+    d = {"date_yyyymmdd": list(self._date), "time_hhmmss": list(self._time)}
     self._writeline("h,1", str(d))
-    d = {"size_xy": self.dXY, "step_xy_deg": self.stepXY,
+    d = {"size_xy": list(self.dXY), "step_xy_deg": list(self.stepXY),
          "n_spect": self.nSpect, "t_int_s": self.tInt_s}
     self._writeline("h,2", str(d))
     self._isReady = True
@@ -75,12 +81,44 @@ class SpectImg(object):
     self._toSerial = f
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  def generateScanPath(self, pathType=PATH_R_SPIRAL):
+    """ Generate a scan path
+    """
+    self.xyPath[:] = 0
+    try:
+      if pathType == PATH_R_SPIRAL:
+        x = 0
+        y = 0
+        pol = 1
+        iPix = 1
+        maxSteps = 0
+        while iPix < self.nPix:
+          maxSteps += 1
+          for j in range(maxSteps):
+            x += self.stepXY[0] *pol
+            self.xyPath[iPix] = np.array([x,y])
+            iPix += 1
+            if iPix > self.nPix -1:
+              return
+          for j in range(maxSteps):
+            y += self.stepXY[1] *pol
+            self.xyPath[iPix] = np.array([x,y])
+            iPix += 1
+            if iPix > self.nPix-1:
+              return
+          pol = 1 if pol < 0 else -1
+      else:
+        assert False, "Error: Unknown scan path type"
+    finally:
+      toLog("Scan path generated.", True)
+
+  # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   def storePixel(self, xy, head, pitch, roll, spect):
     """ Store a pixel
     """
     pre = "p,{0}".format(self._nPixStored)
-    d = {"xy": xy, "head_deg": head, "pitch_deg": pitch, "roll_deg": roll,
-         "spect_au": spect}
+    d = {"xy": list(xy), "head_deg": head, "pitch_deg": pitch, "roll_deg": roll,
+         "spect_au": list(spect)}
     self._writeline(pre, str(d))
     self._nPixStored += 1
 
@@ -88,7 +126,7 @@ class SpectImg(object):
     """ Store wavelengths for a spectrum
     """
     pre = "w,0"
-    d = {"wavelength_nm": nm}
+    d = {"wavelength_nm": list(nm)}
     self._writeline(pre, str(d))
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -96,19 +134,21 @@ class SpectImg(object):
     """ Scan is done, close file etc.
     """
     if self._file:
-      print("Closing file `{0}`".format(self._fname))
+      toLog("Closing file `{0}`".format(self._fname), True)
       self._file.close()
       self._file = None
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-  def _writeline(self, prefix, ln, verbose=True):
+  def _writeline(self, prefix, ln, verbose=False):
+    s = "{0}|{1}".format(prefix, ln)
     if self._file:
-      s = "{0}:{1}".format(prefix, ln)
       self._file.write(s +self._lf)
-      if self._toSerial:
-        self._toSerial(s +self._lf)
-      if verbose:
-        print("-> `{0}`".format(s))
+    if self._toSerial:
+      self._toSerial(s +self._lf)
+    if not self._file and not self._toSerial:
+      print(s)
+    else:
+      toLog("`{0}`".format(s), verbose)
 
 # ----------------------------------------------------------------------------
 class Scanner(object):
@@ -117,14 +157,12 @@ class Scanner(object):
   SRV_PAN          = const(0)
   SRV_TLT          = const(1)
 
-  PATH_RECT_SPIRAL = const(0)
-
   def __init__(self, verbose=False):
     """ Acquires all necessary resources.
     """
     self._verbose = verbose
     self._nSrv = 2
-    self.toLog("Initializing ...")
+    toLog("Initializing ...", True)
 
     # Create servo manager and servos ...
     self.SM = ServoManager(self._nSrv, verbose=verbose)
@@ -137,95 +175,72 @@ class Scanner(object):
     self._Servos.append(Servo(board.SERVO_TLT, verbose=verbose))
     self._Servos[SRV_TLT].change_range(board.TLT_RANGE_US, board.TLT_RANGE_DEG)
     self.SM.add_servo(SRV_TLT, self._Servos[SRV_TLT])
-    self.toLog("Servo manager ready")
+    toLog("Servo manager ready", True)
 
     # Create spectrometer instance
     self.SP = C12880MA(trg=board.TRG, st=board.STA, clk=board.CLK, video=board.VID)
     self.SP.begin()
     self.SP.setIntegrationTime_s(0.01)
     time.sleep_ms(200)
-
-    # ...
+    toLog("Spectrometer ready", True)
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-  def scan(self, fname, size_xy, step_xy_deg, int_s, path=PATH_RECT_SPIRAL):
-    """ Performs a scan named `fname` with `path` the scan pattern type,
+  def setupScan(self, fname, size_xy, step_xy_deg, int_s, path=PATH_R_SPIRAL):
+    """ Sets up a scan named `fname` with `path` the scan pattern type,
         `size_xy` the scan dimensions in steps, `step_xy_deg` the step sizes
-        in [°], and `int_s` the integration time in [s].
+        in [°], and `int_s` the integration time in [s]. If `fname` is empty,
+        the output is send to the REPL.
     """
-    # Initialize
-    done = False
-    self._path = path
+    # Create data structure
+    self.SI = SpectImg(size_xy, step_xy_deg, int_s, self.SP.channels, fname)
+    self.SI.storeWavelengths(self.SP.wavelengths)
 
-    try:
-      # Create data structure
-      self.SI = SpectImg(size_xy, step_xy_deg, int_s, self.SP.channels, fname)
-      self.SI.storeWavelengths(self.SP.wavelengths)
-
-      # Set integration time and move to origin
-      self.SP.setIntegrationTime_s(max(0.001, int_s))
-      self.moveTo()
-
-      # Scan
-      for ipix in range(self.SI.nPix):
-        # Compute next position and move there
-        x,y = self.getNextPos(ipix)
-        self.moveTo((x,y), dt_ms=200)
-
-        # Measure spectrum and 3D position and store it
-        self.SP.read()
-        # ...
-        self.SI.storePixel((x,y), 0,0,0, self.SP.spectrum)
-
-    finally:
-      self.SI.finalize()
-
-    # Move back to origin
+    # Set integration time and move to origin
+    self.SP.setIntegrationTime_s(max(0.001, int_s))
     self.moveTo()
-    return done
+
+    # Calculate scan path
+    self.SI.generateScanPath(path)
+
+    # Ready to scan
+    self._iPix = 0
+
+
+  def scanNext(self):
+    """ Scans the next point, if any
+    """
+    if self._iPix < self.SI.nPix:
+      # Compute next position and move there
+      x,y = self.SI.xyPath[self._iPix]
+      self.moveTo((x,y), dt_ms=SERVO_MOVE_MS)
+
+      # Measure spectrum and 3D position and store it
+      self.SP.read()
+      self.SI.storePixel((x,y), 0,0,0, self.SP.spectrum)
+
+      self._iPix += 1
+      return True
+    else:
+      # Close file, if needed and move back to origin
+      self.SI.finalize()
+      self.moveTo()
+      return False
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-  def calcPath(self):
-    pass
-    """
-    self._edgelen = 1
-    self._nPoints = 0
-    self._currXY = [0, 0]
-    """
-
-
-  def getNextPos(self, ipix):
-    """ Compute next angular scanner position
-    """
-    dx = self.SI.stepXY[0]
-    dy = self.SI.stepXY[1]
-    if self._path == PATH_RECT_SPIRAL:
-      if self._nPoints == 0:
-        # Origin
-        self._currXY = [0, 0]
-      else:
-        pass
-      #self._edgelen += 1
-
-      self._nPoints += 1
-      return self._currXY
-    else:
-      assert False, "Unknown path"
-
   def moveTo(self, pos=[0,0], dt_ms=1000):
     """ Move both servos to positon `pos` in [°]
     """
-    self.toLog("Moving to  ...")
+    toLog("Moving to  ...", self._verbose)
     self.SM.move(self._SIDs, pos, dt_ms)
     while self.SM.is_moving:
       pass
-    self.toLog("... done.")
+    toLog("... done.", self._verbose)
 
-  # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-  def toLog(self, msg):
-    """ Print to log if `verbose`==True
-    """
-    if self._verbose:
-      print(msg)
+# ----------------------------------------------------------------------------
+def toLog(msg, verbose=False):
+  """ Print to log if `verbose` == True
+  """
+  if verbose:
+    print("c,_|" +msg)
 
 # ----------------------------------------------------------------------------
