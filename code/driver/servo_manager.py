@@ -9,6 +9,7 @@
 # ----------------------------------------------------------------------------
 import time
 from machine import Timer
+import machine
 import ulab as np
 from micropython import alloc_emergency_exception_buf
 alloc_emergency_exception_buf(100)
@@ -40,7 +41,7 @@ class ServoManager(object):
     self._targetPosList = np.array([0]*n)                 # Target pos [us]
     self._currPosList   = np.array([-1]*n)                # Current pos [us]
     self._stepSizeList  = np.array([0]*n)                 # .. step sizes [us]
-    self._stepLists     = []
+    self._stepLists     = []                              # only for parabolic
     for i in range(n):
       self._stepLists.append(np.array([0]*max_steps))
     self._nToMove       = 0                               # # of servos to move
@@ -98,64 +99,92 @@ class ServoManager(object):
         If `dt_ms` > 0, then it will be attempted that all servos reach the
         position at the same time (that is after `dt_ms` ms)
     """
+    print('to pos, pos={}'.format(pos))
+    # print(servos) # JD debugging
     if self._isMoving:
       # Stop ongoing move
-      # ...
       self._Timer.init(period=-1)
       self._isMoving = False
 
     # Prepare new move
-    n = 0
-    nSteps = dt_ms /RATE_MS
-    if nSteps > _STEP_ARRAY_MAX:
+    nSteps = dt_ms /RATE_MS # RATE_MS=20
+    print('nSteps_{}=dt_ms_{}/RATE_MS_{}'.format(nSteps,dt_ms,RATE_MS))
+    
+    # by default ???? linear or parabolic?
+    if nSteps > _STEP_ARRAY_MAX: # 500
       # Too many steps for a paraboloid trajectory
+      print("nSteps more than 500, use linear moving pattern")
       lin_vel = True
       print("WARNING: {0} is too many steps; going linear".format(int(nSteps)))
-
-    for iS, SID in enumerate(servos):
+    print('before modifying servos settings')
+    
+    for idxS, SID in enumerate(servos):
+      # idxS == SID due to:
+      # SRV_PAN = const(0)
+      # SRV_TLT = const(1)
+      
       if not self._Servos[SID]:
         continue
-      self._SIDList[n] = SID
-      self._targetPosList[n] = self._Servos[SID].angle_in_us(pos[iS])
+      
+      ## carry on the value from Scanner class to SM class
+      self._SIDList[idxS] = SID
+      
+      # set the target position for respective servos
+      self._targetPosList[idxS] = self._Servos[SID].angle_in_us(pos[idxS])
+      
       if nSteps > 0:
         # A time period is given, therefore calculate the step sizes for this
         # servo's move, with ...
-        p = self._servoPos[SID]
-        dp = self._targetPosList[n] -p
-        #print("dp=", dp)
+        print('for servo{}, the _servoPos={}, the _targetPos={}, the _currPos={}'.
+              format(SID,self._servoPos[SID],
+                     self._targetPosList[idxS],self._currPosList[idxS]))
+                                                                                         
+        p = self._servoPos[SID] # acquire the initial positions
+        
+        dp = self._targetPosList[idxS] -p # calculate the displacement
+        print('initial_pos:{}, total displacement:{}'.format(p,dp))
         if lin_vel:
           # ... linear velocity
-          s = int(dp /nSteps)
-          self._currPosList[n] = p +s
-          self._stepSizeList[n] = s
+          # s = int(dp /nSteps) # ???? speed can be 0?????
+          s = int(dp//10)
+          self._currPosList[idxS] = p +s # the next state
+          self._stepSizeList[idxS] = s # delta_displacement per step == stepsize
+          print('linear velocity={}, stepSize={},_currPos={},_servoPos={}'.
+                format(s,self._stepSizeList[idxS],
+                       self._currPosList[idxS],self._servoPos[idxS]))
         else:
           # ... paraboloid trajectory
+          print('parabolic trajectory')
           p_n = nSteps -1
           p_n2 = p_n /2
           p_peak = p_n2**2
           p_func = [-(j +1 -p_n2)**2 +p_peak for j in range(int(nSteps))]
           p_scal = dp /sum(p_func)
           for iv in range(p_n -1):
-            self._stepLists[n][iv] = int(p_func[iv] *p_scal)
-          self._stepSizeList[n] = 0
-          #print(dp, nSteps, p_n, p_scal, sum(self._stepLists[iS]))
-          #print(self._stepLists[iS])
+            self._stepLists[idxS][iv] = int(p_func[iv] *p_scal)
+          self._stepSizeList[idxS] = 0
       else:
-        # Move directly, therefore update already the final position
-        self._servoPos[SID] = self._targetPosList[iS]
-      n += 1
-    self._nToMove = n
+        ## if nStep==0
+        ## Move directly, therefore update already the final position
+        self._servoPos[SID] = self._targetPosList[idxS]
+          
+    self._nToMove = len(self._Servos)# n #
     self._dt_ms = dt_ms
-    self._nSteps = int(nSteps) -1
-
-    # Initiate move
+    self._nSteps = int(nSteps) -1 # why -1????
+    
+    ## done setting up
+    ## start moving
     if dt_ms == 0:
-      # Just move them w/o considering timing
-      for iS in range(n):
-        p = int(self._targetPosList[iS])
-        self._Servos[self._SIDList[iS]].write_us(p)
+      ## equivalent to nSteps =0 
+      # move the servo directly to the targetPositions
+      for idxS in range(len(self._Servos)):
+        target_p = int(self._targetPosList[idxS])
+        
+        ## the code that actually does the move
+        self._Servos[self._SIDList[idxS]].write_us(target_p) 
     else:
       # Setup timer to keep moving them in the requested time
+      ## trigger _cb() every 20ms
       self._Timer.init(mode=Timer.PERIODIC, period=RATE_MS, callback=self._cb)
       self._isMoving = True
 
@@ -163,33 +192,34 @@ class ServoManager(object):
   def _cb(self, value):
     if self._isMoving:
       # Update every servo in the list
-      for iS in range(self._nToMove):
-        SID = self._SIDList[iS]
-        if self._nSteps > 0:
-          # Move is ongoing, update servo position ...
-          p = int(self._currPosList[iS])
-          self._Servos[SID].write_us(p)
-          if self._stepSizeList[iS] == 0:
-            # Paraboloid trajectory
-            self._currPosList[iS] += self._stepLists[iS][self._nSteps]
-            #print("para", self._nSteps, p, self._stepLists[iS][self._nSteps])
-          else:
-            # Linear trajectory
-            self._currPosList[iS] += self._stepSizeList[iS]
-            #print("lin ", self._nSteps, p, self._stepSizeList[iS])
-        else:
-          # Move has ended, therefore set servo to the target position
-          tp = int(self._targetPosList[iS])
-          self._servoPos[SID] = tp
-          self._Servos[SID].write_us(tp)
-      if self._nSteps > 0:
-        self._nSteps -= 1
-        #print("curr", self._currPosList)
-      else:
-        # Move is done
-        self._isMoving = False
-        #print("targ", self._targetPosList)
-
+      for idxS in range(self._nToMove):
+        SID = self._SIDList[idxS]
+        for step in range(self._nSteps+1):
+            p = int(self._currPosList[idxS])
+            print('debug,step_{},p_{}'.format(step,p))
+            if p >= self._targetPosList[idxS]:
+                # the next pos is beyond target
+                target_p = int(self._targetPosList[idxS])
+                
+                # set the servo to target position
+                self._servoPos[SID] = target_p
+                self._Servos[SID].write_us(target_p)
+                self._isMoving = False
+                print('stopped at {}/{} step'.format(step+1,self._nSteps+1))
+                break
+            else:
+              self._Servos[SID].write_us(p)
+              if self._stepSizeList[idxS] == 0:
+                ## WHY ==0 ?-> paraboloid????
+                # Paraboloid trajectory
+                # print('self._stepSizeList[idxS]==0, paraboloid!!!!')
+                self._currPosList[idxS] += self._stepLists[idxS][self._nSteps]
+              else:
+                # Linear trajectory
+                # set the next position
+                self._currPosList[idxS] += self._stepSizeList[idxS]
+                print("linear, at {}, next goal_{} ".format(
+                    p,self._currPosList[idxS]))
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   @property
   def is_moving(self):
