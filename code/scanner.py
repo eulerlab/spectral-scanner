@@ -21,6 +21,7 @@ __version__      = "0.1.0.0"
 __file_version__ = const(1)
 
 PATH_R_SPIRAL    = const(0)
+PATH_LR_ZIGZAG   = const(1)
 SERVO_MOVE_MS    = const(0)
 
 # ----------------------------------------------------------------------------
@@ -33,10 +34,13 @@ class SpectImg(object):
         elements are kept as linear arrays (lines concatenated). Because of
         the limited RAM, the picture is kept in a file on the flash.
     """
-    self.dXY = size_xy
-    self.nPix = self.dXY[0] *self.dXY[1]
-    self.xyPath = np.zeros((self.nPix, 2))
+    self.dXY = size_xy # the abs range of x, y e.g.(30,30)-> x:-15,15(deg), y(-15,15)
     self.stepXY = step_xy
+    
+    # numPix should depend on the stepsizes
+    self.nPix = (self.dXY[0]//self.stepXY[0]+1) * (self.dXY[1]//self.stepXY[1]+1)
+    self.xyPath = np.zeros((self.nPix, 2))
+    
     self.nSpect = n_spect
     self.tInt_s = int_s
     self._fname = fname
@@ -81,16 +85,14 @@ class SpectImg(object):
     self._toSerial = f
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-  def generateScanPath(self, pathType=PATH_R_SPIRAL):
+  def generateScanPath(self, pathType):# =PATH_R_SPIRAL):
     """ Generate a scan path
     """
     self.xyPath[:] = 0
     try:
       if pathType == PATH_R_SPIRAL:
-        x = 0
-        y = 0
-        pol = 1
-        iPix = 1
+        x = 0;y = 0
+        pol = 1;iPix = 1
         maxSteps = 0
         while iPix < self.nPix:
           maxSteps += 1
@@ -107,10 +109,25 @@ class SpectImg(object):
             if iPix > self.nPix-1:
               return
           pol = 1 if pol < 0 else -1
+      elif pathType == PATH_LR_ZIGZAG:
+          range_x,range_y = self.dXY
+          max_x = range_x//2 # questionable setting, assumed symmetry here
+          max_y = range_y//2
+          xs= np.linspace(max_x,-max_x,(range_x//self.stepXY[0]+1)) # pos_x(left) -> neg_x(right)
+          ys = np.linspace(max_y,-max_y,(range_y//self.stepXY[1]+1)) # pos_y -> neg_y
+          iPix = 0
+          for row_idx,y in enumerate(ys):
+              for x in xs:
+                  if abs(row_idx)%2==1:
+                      # odd row: flip the x_scanning direction
+                      x = -x
+                  self.xyPath[iPix] = np.array([x,y])
+                  iPix += 1
       else:
         assert False, "Error: Unknown scan path type"
     finally:
       toLog("Scan path generated.", True)
+      print(self.xyPath)
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   def storePixel(self, xy, head, pitch, roll, spect):
@@ -185,19 +202,20 @@ class Scanner(object):
     toLog("Spectrometer ready", True)
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-  def setupScan(self, fname, size_xy, step_xy_deg, int_s, path=PATH_R_SPIRAL):
+  def setupScan(self, fname, size_xy, step_xy_deg, int_s, path):
     """ Sets up a scan named `fname` with `path` the scan pattern type,
         `size_xy` the scan dimensions in steps, `step_xy_deg` the step sizes
         in [°], and `int_s` the integration time in [s]. If `fname` is empty,
         the output is send to the REPL.
     """
+    print(PATH_R_SPIRAL) # debugging
     # Create data structure
     self.SI = SpectImg(size_xy, step_xy_deg, int_s, self.SP.channels, fname)
     self.SI.storeWavelengths(self.SP.wavelengths)
 
     # Set integration time and move to origin
     self.SP.setIntegrationTime_s(max(0.001, int_s))
-    self.moveTo()
+    self.moveTo() # init for [0,0] in angle, (1470, 1474) in us
 
     # Calculate scan path
     self.SI.generateScanPath(path)
@@ -231,7 +249,8 @@ class Scanner(object):
     """ Move both servos to positon `pos` in [°]
     """
     toLog("Moving to  ...", self._verbose)
-    self.SM.move(self._SIDs, pos, dt_ms)
+    self.SM.move(self._SIDs, pos,dt_ms)
+    # print(pos,dt_ms)
     while self.SM.is_moving:
       pass
     toLog("... done.", self._verbose)

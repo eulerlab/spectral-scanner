@@ -99,7 +99,7 @@ class ServoManager(object):
         If `dt_ms` > 0, then it will be attempted that all servos reach the
         position at the same time (that is after `dt_ms` ms)
     """
-    print('to pos, pos={}'.format(pos))
+    print('target pos {}'.format(pos))
     # print(servos) # JD debugging
     if self._isMoving:
       # Stop ongoing move
@@ -107,8 +107,9 @@ class ServoManager(object):
       self._isMoving = False
 
     # Prepare new move
+    # do we still need nSteps???
     nSteps = dt_ms /RATE_MS # RATE_MS=20
-    print('nSteps_{}=dt_ms_{}/RATE_MS_{}'.format(nSteps,dt_ms,RATE_MS))
+    # print('nSteps_{}=dt_ms_{}/RATE_MS_{}'.format(nSteps,dt_ms,RATE_MS))
     
     # by default ???? linear or parabolic?
     if nSteps > _STEP_ARRAY_MAX: # 500
@@ -116,7 +117,6 @@ class ServoManager(object):
       print("nSteps more than 500, use linear moving pattern")
       lin_vel = True
       print("WARNING: {0} is too many steps; going linear".format(int(nSteps)))
-    print('before modifying servos settings')
     
     for idxS, SID in enumerate(servos):
       # idxS == SID due to:
@@ -135,23 +135,19 @@ class ServoManager(object):
       if nSteps > 0:
         # A time period is given, therefore calculate the step sizes for this
         # servo's move, with ...
-        print('for servo{}, the _servoPos={}, the _targetPos={}, the _currPos={}'.
-              format(SID,self._servoPos[SID],
-                     self._targetPosList[idxS],self._currPosList[idxS]))
                                                                                          
         p = self._servoPos[SID] # acquire the initial positions
         
         dp = self._targetPosList[idxS] -p # calculate the displacement
-        print('initial_pos:{}, total displacement:{}'.format(p,dp))
+        # print('servo{},initial_pos(us):{}, target_pos(us):{},total displacement(us):{}'.format(
+        #    idxS,p,self._targetPosList[idxS],dp))
         if lin_vel:
           # ... linear velocity
-          # s = int(dp /nSteps) # ???? speed can be 0?????
-          s = int(dp//10)
+          s = round(dp/RATE_MS)  # why do we need this?
           self._currPosList[idxS] = p +s # the next state
           self._stepSizeList[idxS] = s # delta_displacement per step == stepsize
-          print('linear velocity={}, stepSize={},_currPos={},_servoPos={}'.
-                format(s,self._stepSizeList[idxS],
-                       self._currPosList[idxS],self._servoPos[idxS]))
+          # print('linear velocity(us/step)={},nextPos={},_servoPos={}'.
+          #      format(s,self._currPosList[idxS],self._servoPos[idxS]))
         else:
           # ... paraboloid trajectory
           print('parabolic trajectory')
@@ -196,7 +192,7 @@ class ServoManager(object):
         SID = self._SIDList[idxS]
         for step in range(self._nSteps+1):
             p = int(self._currPosList[idxS])
-            print('debug,step_{},p_{}'.format(step,p))
+            # print('debug,step_{},p_{}'.format(step,p))
             if p >= self._targetPosList[idxS]:
                 # the next pos is beyond target
                 target_p = int(self._targetPosList[idxS])
@@ -205,7 +201,7 @@ class ServoManager(object):
                 self._servoPos[SID] = target_p
                 self._Servos[SID].write_us(target_p)
                 self._isMoving = False
-                print('stopped at {}/{} step'.format(step+1,self._nSteps+1))
+                # print('stopped at {}/{} step'.format(step+1,self._nSteps+1))
                 break
             else:
               self._Servos[SID].write_us(p)
@@ -218,8 +214,9 @@ class ServoManager(object):
                 # Linear trajectory
                 # set the next position
                 self._currPosList[idxS] += self._stepSizeList[idxS]
-                print("linear, at {}, next goal_{} ".format(
-                    p,self._currPosList[idxS]))
+                # if step%10 ==0:
+                    #print("linear, iter: {}/50 step, at {}, next {} ".format(
+                    #    step,p,self._currPosList[idxS]))
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   @property
   def is_moving(self):
