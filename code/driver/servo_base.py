@@ -34,13 +34,15 @@ class ServoBase(object):
 
   def change_range(self, us_range, ang_range=[-90, 90], _sign=1):
     """ Sets the minimun and maximum supported timing (`us_range`), and the
-        respective angular range (`ang_range`) covered; `_sign` determines the
-        sign of the input angle
+        respective angular range (`ang_range`) covered;
+        
+        `_sign` determines the sign of the input angle
     """
-    self._range[0] = int(us_range[0])
-    self._range[1] = int(us_range[1])
-    self._range[2] = int(us_range[1] -us_range[0])
+    self._range[0] = int(us_range[0]) # min_US
+    self._range[1] = int(us_range[1]) # max_US
+    self._range[2] = int(us_range[1] -us_range[0]) # max_US-min_US
     self._invert = ang_range[0] > ang_range[1]
+    
     self._range[3] = int(min(ang_range[0], ang_range[1]))
     self._range[4] = int(max(ang_range[0], ang_range[1]))
     self._range[5] = int(abs(ang_range[1] -ang_range[0]))
@@ -73,8 +75,16 @@ class ServoBase(object):
     """ Return the angle as timing value
     """
     r = self._range
-    if not angle is None:
-      self._angle = min(r[4], max(r[3], angle)) *self._sign
-    return int(r[0] +r[2] *(self._angle -r[3]) //r[5])
+    if angle is None:
+      angle = self._angle
+      
+    else:
+      self._sign = 1 if angle>= 0 else -1
+      self._angle = min(r[4], max(r[3], angle)) # -45,45
+    print('in servo_base.py,r={}, angle={},sign={}'.format(r,angle,
+                                                           self._sign))
+    output_us =int(r[0] +r[2] *(self._angle -r[3]) //r[5])
+    # print('input angle {}, output us {}'.format(angle, output_us))
+    return output_us
 
 # ----------------------------------------------------------------------------
