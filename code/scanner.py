@@ -22,7 +22,7 @@ __file_version__ = const(1)
 
 PATH_R_SPIRAL    = const(0)
 PATH_LR_ZIGZAG   = const(1)
-SERVO_MOVE_MS    = const(0)
+SERVO_MOVE_MS    = const(250) # const(0)
 
 # ----------------------------------------------------------------------------
 class SpectImg(object):
@@ -131,12 +131,13 @@ class SpectImg(object):
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   def storePixel(self, xy, head, pitch, roll, spect):
-    """ Store a pixel
+    """
+    Store a pixel
     """
     pre = "p,{0}".format(self._nPixStored)
     d = {"xy": list(xy), "head_deg": head, "pitch_deg": pitch, "roll_deg": roll,
          "spect_au": list(spect)}
-    self._writeline(pre, str(d))
+    # self._writeline(pre, str(d)) disabled for debugging
     self._nPixStored += 1
 
   def storeWavelengths(self, nm):
@@ -230,8 +231,12 @@ class Scanner(object):
     if self._iPix < self.SI.nPix:
       # Compute next position and move there
       x,y = self.SI.xyPath[self._iPix]
-      self.moveTo((x,y), dt_ms=SERVO_MOVE_MS)
-
+      print('moving to {}, {}'.format(x,y))
+      self.moveTo((x,y), dt_ms=SERVO_MOVE_MS)#dt_ms=SERVO_MOVE_MS) # here dt_ms is set to 0
+      # print('in scanner.scanNext(), getting ready to sleep')
+      
+      ## pause 500 ms before reading the spectrum
+      # time.sleep(0.5)
       # Measure spectrum and 3D position and store it
       self.SP.read()
       self.SI.storePixel((x,y), 0,0,0, self.SP.spectrum)
@@ -245,13 +250,16 @@ class Scanner(object):
       return False
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-  def moveTo(self, pos=[0,0], dt_ms=1000):
-    """ Move both servos to positon `pos` in [°]
+  def moveTo(self, pos=[0,0], dt_ms=SERVO_MOVE_MS):
     """
+    Move both servos to positon `pos` in [°]
+    """
+    print('starting move to {} with duration {}'.format(pos,dt_ms))
+    
     toLog("Moving to  ...", self._verbose)
     self.SM.move(self._SIDs, pos,dt_ms)
-    # print(pos,dt_ms)
     while self.SM.is_moving:
+      # print('   in the while loop')
       pass
     toLog("... done.", self._verbose)
 
