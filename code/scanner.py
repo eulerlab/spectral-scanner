@@ -137,7 +137,7 @@ class SpectImg(object):
     pre = "p,{0}".format(self._nPixStored)
     d = {"xy": list(xy), "head_deg": head, "pitch_deg": pitch, "roll_deg": roll,
          "spect_au": list(spect)}
-    # self._writeline(pre, str(d)) disabled for debugging
+    self._writeline(pre, str(d)) # disabled for debugging
     self._nPixStored += 1
 
   def storeWavelengths(self, nm):
@@ -232,7 +232,7 @@ class Scanner(object):
       # Compute next position and move there
       x,y = self.SI.xyPath[self._iPix]
       print('moving to {}, {}'.format(x,y))
-      self.moveTo((x,y), dt_ms=SERVO_MOVE_MS)#dt_ms=SERVO_MOVE_MS) # here dt_ms is set to 0
+      self.moveTo((x,y), dt_ms=SERVO_MOVE_MS)
       # print('in scanner.scanNext(), getting ready to sleep')
       
       ## pause 500 ms before reading the spectrum
