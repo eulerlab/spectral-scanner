@@ -22,7 +22,7 @@ __version__     = "0.1.1.1"
 
 PULL_UP         = const(0)
 PULL_DOWN       = const(1)
-MAX_DUTY        = const(1023)
+MAX_DUTY        = const(1023)# const(1023)
 RMT_MAX_CHAN    = const(7)
 RMT_CLOCK_DIV   = const(80)
 RMT_MAX_DUTY    = const(4000)
