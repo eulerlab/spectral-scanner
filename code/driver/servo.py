@@ -72,16 +72,20 @@ class Servo(ServoBase):
   '''
   @micropython.native
   def write_us(self, t_us):
-    """ Move to a position given by the timing
     """
+    Move to a position in microsecond
+    """
+    # print('in servo.py, write_us(), self._invert=',self._invert)
     f = self._freq
     r = self._range
     if t_us == 0:
       self._pwm.duty = 0
     else:
-      t = min(r[1], max(r[0], t_us))
+      t = min(r[1], max(r[0], t_us)) # min(conifg_max,max(config_min,target))
       if not self._invert:
-        d = t *dio.MAX_DUTY *f // 1000000
+        
+        d = t*dio.MAX_DUTY *f // 1000000
+        # print('d_{} = t_{}* dio.MAX_DUTY_{} *f_{} // 1000000'.format(d,t,dio.MAX_DUTY,f))
       else:
         d = (r[1] -t +r[0]) *dio.MAX_DUTY *f // 1000000
       self._pwm.duty = d
