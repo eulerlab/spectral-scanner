@@ -1,0 +1,1 @@
+tricks: under Linux, the device is shown under /dev/bus/usb, instead of /dev/tty* (like the home-made telescole), which means the .rules file should have a different subsystem.
