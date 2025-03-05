@@ -1,2 +1,3 @@
 the integration time for this device can only be 0, 13ms, 101ms, or 402ms.
 
+by default, integration time for tsl2561 is 13ms
