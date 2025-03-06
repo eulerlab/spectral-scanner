@@ -1,0 +1,1 @@
+how to share same communication tunnel between scanner and tsl light sensor
